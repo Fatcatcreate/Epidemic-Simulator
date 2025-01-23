@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Epidemic Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        .container {
+            display: grid;
+            grid-gap: 2px;
+            justify-content: center;
+        }
+        .cell {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: lightgreen;
+        }
+        .infected {
+            background-color: red;
+        }
+        .dead {
+            background-color: black;
+        }
+        .controls, .slider-container {
+            margin: 10px;
+        }
+        .slider {
+            width: 300px;
+        }
+        button, input {
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Epidemic Simulation</h1>
+    <div class="controls">
+        <label for="population">Population:</label>
+        <input type="number" id="population" min="10" max="1000" value="400">
+        <label for="r-rate">R Rate:</label>
+        <input type="number" id="r-rate" min="1" value="2" step="0.1">
+        <label for="mortality-rate">Mortality Rate (%):</label>
+        <input type="number" id="mortality-rate" min="0" value="2" step="0.1">
+        <label for="recovery-rate">Recovery Generations:</label>
+        <input type="number" id="recovery-rate" min="1" value="5">
+        <button id="start-btn">Start Simulation</button>
+        <button id="restart-btn" disabled>Restart Simulation</button>
+    </div>
+    <div class="slider-container">
+        <input type="range" id="generation-slider" class="slider" min="0" value="0" disabled>
+        <span id="generation-display">Generation: 0</span>
+    </div>
+    <div class="container" id="grid-container"></div>
+
+    <script>
+    alert("Click up to 3 cells to infect them and then click start simualtion, setting are locked while sim is running");
+    const grid = document.getElementById('grid-container');
+const popInput = document.getElementById('population');
+const rInput = document.getElementById('r-rate');
+const mortInput = document.getElementById('mortality-rate');
+const recInput = document.getElementById('recovery-rate');
+const startBtn = document.getElementById('start-btn');
+const restartBtn = document.getElementById('restart-btn');
+const slider = document.getElementById('generation-slider');
+const genDisplay = document.getElementById('generation-display');
+let cells = [], inf = [], dead = [], rec = [], healthy = [], recTimers = {}, gen = 0, maxGen = 0, genStates = [], userSel = 0, running = false, pop = 400, noInfectCount = 0, simInt;
+
+function createGrid() {
+    grid.innerHTML = '';
+    cells = [];
+    const size = Math.ceil(Math.sqrt(pop));
+    grid.style.gridTemplateColumns = `repeat(${size}, 17px)`;
+    for (let i = 0; i < pop; i++) {
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        cell.addEventListener('click', () => {
+            if (!running && userSel < 3 && !inf.includes(i)) {
+                inf.push(i);
+                cells[i].classList.add('infected');
+                recTimers[i] = 0;
+                userSel++;
+            }
+        });
+        grid.appendChild(cell);
+        cells.push(cell);
+    }
+    healthy = Array.from({ length: pop }, (_, i) => i);
+}
+
+function infectNeighbors(index) {
+    const size = Math.ceil(Math.sqrt(pop));
+    const row = Math.floor(index / size);
+    const col = index % size;
+    const neighbors = [];
+    if (row > 0) neighbors.push(index - size);
+    if (row < size - 1) neighbors.push(index + size);
+    if (col > 0) neighbors.push(index - 1);
+    if (col < size - 1) neighbors.push(index + 1);
+    let newInf = 0;
+    neighbors.forEach(n => {
+        if (!inf.includes(n) && !dead.includes(n) && !rec.includes(n)) {
+            if (Math.random() < rInput.value / 10) {
+                inf.push(n);
+                healthy = healthy.filter(c => c !== n);
+                cells[n].classList.add('infected');
+                recTimers[n] = 0;
+                newInf++;
+            }
+        }
+    });
+    return newInf;
+}
+
+function nextGen() {
+    let newInf = 0, newDead = [];
+    inf.forEach(c => {
+        if (Math.random() < mortInput.value / 100) {
+            newDead.push(c);
+            dead.push(c);
+            cells[c].classList.add('dead');
+        } else {
+            newInf += infectNeighbors(c);
+            recTimers[c]++;
+            if (recTimers[c] >= recInput.value) {
+                cells[c].classList.remove('infected');
+                recTimers[c] = undefined;
+                rec.push(c);
+            }
+        }
+    });
+    inf = inf.filter(c => !newDead.includes(c));
+    noInfectCount = newInf === 0 ? noInfectCount + 1 : 0;
+    if (noInfectCount >= 2) {
+        clearInterval(simInt);
+        running = false;
+    }
+    saveState();
+    gen++;
+    maxGen = gen;
+    slider.max = gen;
+    slider.value = gen;
+    genDisplay.textContent = `Generation: ${gen}`;
+}
+
+function saveState() {
+    genStates[gen] = {
+        inf: [...inf],
+        dead: [...dead],
+        rec: [...rec],
+        recTimers: { ...recTimers },
+    };
+}
+
+function resetSim() {
+    inf = [];
+    dead = [];
+    rec = [];
+    healthy = [];
+    recTimers = {};
+    gen = 0;
+    maxGen = 0;
+    genStates = [];
+    userSel = 0;
+    running = false;
+    noInfectCount = 0;
+    createGrid();
+    rInput.disabled = false;
+    mortInput.disabled = false;
+    recInput.disabled = false;
+    popInput.disabled = false;
+    slider.disabled = true;
+    genDisplay.textContent = `Generation: 0`;
+}
+
+startBtn.addEventListener('click', () => {
+    if (userSel > 0) {
+        running = true;
+        rInput.disabled = true;
+        mortInput.disabled = true;
+        recInput.disabled = true;
+        popInput.disabled = true;
+        slider.disabled = false;
+        saveState();
+        simInt = setInterval(nextGen, 1000);
+    }
+});
+
+restartBtn.addEventListener('click', () => {
+    clearInterval(simInt);
+    resetSim();
+});
+
+slider.addEventListener('input', () => {
+    const g = parseInt(slider.value);
+    gen = g;
+    genDisplay.textContent = `Generation: ${g}`;
+});
+
+popInput.addEventListener('change', () => {
+    pop = parseInt(popInput.value);
+    createGrid();
+});
+
+resetSim();
+
+    </script>
+
+</body>
+</html>
